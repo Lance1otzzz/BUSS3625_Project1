@@ -1,6 +1,5 @@
 # File: bandit.py
 import numpy as np
-import matplotlib.pyplot as plt
 
 class KArmedBandit:
     r"""
@@ -60,7 +59,6 @@ class KArmedBandit:
         # 记录最优臂的索引和真实奖励均值
         self.optimal_arm = np.argmax(self.true_means)
         self.optimal_mean = self.true_means[self.optimal_arm]
-        # print(f"赌博机已重置，真实均值: {np.round(self.true_means, 3)}, 最优臂: {self.optimal_arm} (均值={self.optimal_mean:.3f})")
 
     def pull(self, arm):
         r"""
@@ -79,46 +77,21 @@ class KArmedBandit:
 
         if self.reward_type == 'truncated_normal':
             # 生成正态分布奖励，然后截断到 [0, 1] 范围
-            # 注意：截断会改变实际的均值和方差，特别是当均值接近边界时
             reward = np.random.normal(mean, self.reward_std_dev)
             return np.clip(reward, 0, 1) # 截断到 [0, 1]
         elif self.reward_type == 'bernoulli':
             # 生成 Bernoulli 奖励 (0 或 1)，概率为 mean
             if not (0 <= mean <= 1):
-                 print(f"警告: Bernoulli 臂 {arm} 的均值 {mean} 不在 [0, 1] 范围内，将截断。")
                  mean = np.clip(mean, 0, 1)
             return np.random.binomial(1, mean)
         elif self.reward_type == 'beta':
-             # 从 Beta 分布生成奖励。需要将均值 mean 映射回 alpha, beta 参数。
-             # 这需要一个额外的参数或假设，例如固定 alpha+beta 或固定方差。
-             # 简单方法：假设一个固定的 "concentration" (alpha+beta)
-             # concentration = 10 # 可调参数
-             # alpha = mean * concentration
-             # beta = (1 - mean) * concentration
-             # 另一种方法：假设方差，推导 alpha, beta (更复杂)
-             # 为了简单，我们使用一个固定的方差或等效的标准差
-             # 假设标准差与 mean*(1-mean) 相关
-             scale = self.reward_std_dev if self.reward_std_dev > 0 else 0.1 # 使用设定的标准差或默认值
-             # 从均值和标准差估计 Beta 参数 (近似)
-             # var = scale**2
-             # alpha = ((1 - mean) / var - 1 / mean) * mean**2
-             # beta = alpha * (1 / mean - 1)
-             # alpha = max(alpha, 1e-6) # 保证正数
-             # beta = max(beta, 1e-6)
-             # 另一种简单方法：直接使用均值作为参数（不符合标准Beta），或者需要更明确的参数化
-             # ---- 最简单实现：使用均值作为 Bernoulli 概率 ----
-             # print("警告: Beta 奖励类型暂用 Bernoulli 实现。")
-             # return np.random.binomial(1, mean)
-             # ---- 使用均值和固定总数 (concentration) ----
-             concentration = 1.0 / (self.reward_std_dev**2) if self.reward_std_dev > 0 else 10 # 浓度与方差成反比
+             # 从 Beta 分布生成奖励
+             concentration = 1.0 / (self.reward_std_dev**2) if self.reward_std_dev > 0 else 10
              alpha = max(1e-6, mean * concentration)
              beta = max(1e-6, (1 - mean) * concentration)
              return np.random.beta(alpha, beta)
-
         else:
-             # 这不应该发生，因为类型在 init 中已验证
              raise RuntimeError(f"内部错误: 未处理的奖励类型 {self.reward_type}")
-
 
     def get_optimal_arm(self):
         """返回最优臂的索引"""

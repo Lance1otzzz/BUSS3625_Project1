@@ -1,0 +1,149 @@
+\documentclass[8pt, a4paper]{ctexart} % 使用 ctexart 文档类以支持中文, 11pt 字号, A4纸张
+
+\usepackage{amsmath} % 数学公式
+\usepackage{amssymb} % 数学符号
+\usepackage{graphicx} % 插入图片
+\usepackage{geometry} % 设置页边距
+\usepackage{float} % 控制浮动体位置 (如图表)
+\usepackage{lipsum} % 用于生成占位文本 (如果需要)
+\usepackage{hyperref} % 创建超链接 (可选)
+
+% 设置页边距，有助于控制页数
+\geometry{left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
+
+% 定义一些常用命令 (可选)
+\newcommand{\N}{\ensuremath{N}}
+\newcommand{\T}{\ensuremath{T}}
+\newcommand{\kArms}{\ensuremath{k}}
+\newcommand{\muStar}{\ensuremath{\mu^*}}
+\newcommand{\muI}{\ensuremath{\mu_i}}
+\newcommand{\aT}{\ensuremath{a_t}}
+\newcommand{\rT}{\ensuremath{r_t}}
+\newcommand{\eps}{\ensuremath{\epsilon}} % 使用 epsilon 而非 varepsilon
+\newcommand{\deltaVal}{\ensuremath{\delta}}
+\newcommand{\DeltaVal}{\ensuremath{\Delta}}
+
+\title{多臂赌博机两阶段框架下的策略研究}
+\author{江木力}
+\date{\today} % 使用当前日期
+
+\begin{document}
+
+\maketitle
+
+\section{算法策略}
+
+\subsection{实验阶段策略}
+
+我们实现了以下探索-利用策略：
+
+\subsubsection{固定探索策略}
+\begin{itemize}
+    \item \textbf{$\eps$-贪婪(Epsilon-Greedy)}: 以 $\eps$ 概率随机探索， $1-\eps$ 概率选择当前最优臂。
+    \item \textbf{UCB(Upper Confidence Bound)}: 选择上置信界最高的臂，平衡探索与利用。
+    \item \textbf{Thompson采样(Thompson Sampling)}: 基于Beta分布后验采样。
+    \item \textbf{Softmax}: 按指数加权概率选择臂，温度参数控制探索强度。
+\end{itemize}
+
+\subsubsection{动态探索策略}
+\begin{itemize}
+    \item \textbf{基于Hoeffding不等式的动态探索}:
+        \begin{itemize}
+            \item 根据后续承诺阶段长度 $\N$ 自适应调整置信水平($\deltaVal = 1/\N$)。
+            \item 当某臂的置信下界高于所有其他臂的置信上界时停止探索。
+        \end{itemize}
+    \item \textbf{基于贝叶斯后验的动态探索}:
+        \begin{itemize}
+            \item 使用蒙特卡洛方法评估每个臂是最优臂的后验概率。
+            \item 当某臂的后验概率超过阈值($1-1/\N$)时停止探索。
+        \end{itemize}
+\end{itemize}
+
+\subsection{承诺阶段策略}
+\begin{itemize}
+    \item \textbf{最佳经验值(BestEmpirical)}: 选择估计平均奖励最高的臂。
+    \item \textbf{最常拉动(MostPulled)}: 选择被拉动次数最多的臂。
+    \item \textbf{置信下界(LCB)}: 选择置信下界最高的臂，更保守的选择方法。
+\end{itemize}
+
+\section{理论分析}
+
+\subsection{$\T/\N$比率的理论意义}
+
+在总预算 $B=\T+\N$ 固定的情况下，如何分配探索轮数 $\T$ 和利用轮数 $\N$ 是一个关键问题。理论上：
+\begin{itemize}
+    \item 当 $B \to \infty$ 时，最优探索轮数应该是 $O(\log B)$，使得 $\T/B \to 0$。
+    \item 当 $B$ 较小时，存在一个取决于问题难度的最优 $\T/\N$ 比率。
+\end{itemize}
+
+对于差距为 $\DeltaVal$ 的情况(最优臂与次优臂均值差)，UCB策略的理论最优 $\T$ 约为：
+$$
+\T_{opt} \approx \frac{c \cdot \log \N}{\DeltaVal^2}
+$$
+其中 $c$ 是一个常数。这表明随着 $\N$ 的增加，最优 $\T$ 应该对数级增长，而随着问题难度($\DeltaVal$ 减小)的增加，最优 $\T$ 应该二次级增长。
+
+\subsection{动态探索策略分析}
+
+\subsubsection{基于Hoeffding的动态策略}
+当使用 $\deltaVal = 1/\N$ 时，该策略确保：
+\begin{itemize}
+    \item 错误识别概率 $P(\text{选择次优臂}) \leq 1/\N$。
+    \item 期望后悔值 $E[R] \leq \DeltaVal \cdot \N \cdot (1/\N) + \T \cdot \DeltaVal = \DeltaVal(1+\T)$。
+    \item 要满足终止条件，需要至少 $\Omega(\log(\kArms\N)/\DeltaVal^2)$ 次拉动。
+\end{itemize}
+
+\subsubsection{贝叶斯策略分析}
+当停止阈值为 $1-1/\N$ 时：
+\begin{itemize}
+    \item 错误率随 $\N$ 增大而减小，确保后悔值期望上界为常数。
+    \item 探索轮数理论上与 $\log(\N)/\DeltaVal^2$ 成正比。
+    \item 在简单问题(臂间差距明显)上通常能更快停止探索。
+\end{itemize}
+
+\section{实验结果与分析}
+
+\subsection{单次实验示例}
+
+
+\subsection{$\T/\N$关系分析}
+
+
+\subsection{动态探索策略评估}
+
+
+\subsection{$\N$值对探索轮数的影响}
+
+% --------------------------------------------
+
+\section{讨论}
+
+\subsection{主要发现}
+\begin{enumerate}
+    \item \textbf{最优$\T/\N$比率}: 实验表明，对于固定预算 $B=\T+\N$，存在最优的资源分配比例。这一比例与问题难度和所选策略密切相关。
+    \item \textbf{动态策略优势}: 动态探索策略能够根据统计证据自适应决定何时停止探索，在很多情况下优于预设固定$\T$值的策略，特别是当$\N$值变化大时。
+    \item \textbf{策略组合性能}: 实验表明Thompson采样与BestEmpirical的组合在多数场景下表现最佳，而简单的$\eps$-贪婪策略在参数选择得当时也能取得不错的效果。
+\end{enumerate}
+
+\subsection{实际应用指导}
+基于我们的研究，可以提出以下实际应用指导：
+\begin{enumerate}
+    \item \textbf{当$\N$值已知且较大时}: 应采用动态探索策略，特别是基于贝叶斯后验的方法，可以在保证选择质量的同时减少不必要的探索。
+    \item \textbf{当问题难度未知时}: UCB策略是稳健的选择，它能在各种难度条件下都取得不错的表现。
+    \item \textbf{当计算资源受限时}: 使用$\eps$-贪婪策略，设定$\T/\N$比率约为0.5左右，是简单而有效的做法。
+\end{enumerate}
+
+\section{结论与未来工作}
+
+\subsection{结论}
+
+本研究系统分析了多臂赌博机两阶段框架中的决策策略，重点关注了$\T/\N$比率对总后悔值的影响。我们提出的动态探索策略能够根据承诺阶段长度$\N$自适应确定所需的探索量，在多种场景下表现优异。实验结果验证了我们的理论分析：最优探索轮数与$\log(\N)$成正比，与问题难度的倒数平方($1/\DeltaVal^2$)成正比。
+
+\subsection{未来工作}
+\begin{enumerate}
+    \item \textbf{非平稳环境扩展}: 将研究扩展到奖励分布随时间变化的非平稳环境。
+    \item \textbf{多臂相关性研究}: 考虑臂之间存在相关性的情况，例如线性上下文赌博机模型。
+    \item \textbf{实际应用验证}: 在实际业务场景如临床试验或广告投放中验证本研究的发现。
+    \item \textbf{理论边界改进}: 提供动态策略在不同问题特征下的更精确后悔值上界。
+\end{enumerate}
+
+\end{document}

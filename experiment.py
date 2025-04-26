@@ -1,14 +1,10 @@
 # File: experiment.py
 import numpy as np
-from bandit import KArmedBandit # 确保导入 KArmedBandit
+from bandit import KArmedBandit
 
 class BanditExperiment:
     """
     多臂赌博机实验类，封装了实验流程，包含明确的实验阶段和承诺阶段。
-    这种结构天然支持两阶段混合策略：
-    - `run_experiment_phase` 使用一个策略函数运行 T 轮探索。
-    - `choose_commitment_arm` 使用另一个策略函数根据 T 轮结果选择一个臂。
-    - `run_commitment_phase` 使用选定的臂运行 N 轮承诺。
     """
     def __init__(self, k=10, T=1000, N=100, bandit_params=None):
         """
@@ -63,14 +59,11 @@ class BanditExperiment:
                            并返回选择的臂的索引 (0 to k-1)。
         """
         if self.T == 0:
-            # print("实验阶段轮数 T = 0，跳过实验阶段。") # Reduced print noise
             return # 如果 T=0，不执行任何操作
 
-        # print(f"开始实验阶段 (T={self.T})...") # Reduced print noise
         for t in range(self.T):
             self.total_rounds_elapsed += 1
             # 使用策略选择臂
-            # 策略函数可以访问 self.arm_pull_counts, self.arm_estimated_values 等信息
             arm_to_pull = experiment_policy(self)
 
             if not (0 <= arm_to_pull < self.k):
@@ -83,15 +76,11 @@ class BanditExperiment:
             self.experiment_arms_chosen.append(arm_to_pull)
             self.experiment_rewards_received.append(reward)
 
-            # 更新被选臂的统计信息 (使用增量更新公式计算均值)
+            # 更新被选臂的统计信息
             self.arm_pull_counts[arm_to_pull] += 1
             self.arm_cumulative_rewards[arm_to_pull] += reward
-            # 更新估计均值: V_n = V_{n-1} + (R_n - V_{n-1}) / n
-            # 或者直接计算: V_n = Sum(R_i) / n
-            # 为避免潜在的浮点数问题和效率，直接计算更简单
+            # 更新估计均值
             self.arm_estimated_values[arm_to_pull] = self.arm_cumulative_rewards[arm_to_pull] / self.arm_pull_counts[arm_to_pull]
-        # print("实验阶段完成。") # Reduced print noise
-
 
     def choose_commitment_arm(self, commitment_policy):
         """
@@ -100,23 +89,16 @@ class BanditExperiment:
         参数:
         commitment_policy: 选择承诺臂的策略函数。
                            该函数接收当前实验对象 (self) 作为参数，
-                           （可以访问实验结束时的 self.arm_estimated_values, self.arm_pull_counts）
                            并返回选择的臂的索引 (0 to k-1)。
         """
         if self.T == 0 and self.N > 0:
              print("警告: 实验阶段 T=0，承诺策略可能基于零信息。")
-             # 可以在 T=0 时强制随机选择或让策略自行处理
-             # self.commitment_arm_selected = np.random.randint(self.k)
-             # return self.commitment_arm_selected
 
-        # print("选择承诺臂...") # Reduced print noise
         self.commitment_arm_selected = commitment_policy(self)
 
         if not (isinstance(self.commitment_arm_selected, (int, np.integer)) and 0 <= self.commitment_arm_selected < self.k):
              raise ValueError(f"承诺策略返回了无效的臂索引或类型: {self.commitment_arm_selected} (类型: {type(self.commitment_arm_selected)})")
 
-
-        # print(f"承诺臂已选定: {self.commitment_arm_selected}") # Reduced print noise
         return self.commitment_arm_selected
 
     def run_commitment_phase(self):
@@ -125,23 +107,20 @@ class BanditExperiment:
         必须先调用 choose_commitment_arm 选择承诺臂。
         """
         if self.N == 0:
-             # print("承诺阶段轮数 N = 0，跳过承诺阶段。") # Reduced print noise
              return # 如果 N=0，不执行任何操作
 
         if self.commitment_arm_selected is None:
-            # Check if T > 0, if T=0 commitment arm might be intentionally None if N=0 too.
-            if self.T > 0 or self.N > 0: # Only raise error if phases were expected
+            # 只有当T>0或N>0时才会报错
+            if self.T > 0 or self.N > 0:
                  raise ValueError("必须先调用 choose_commitment_arm 选择承诺臂才能运行承诺阶段。")
             else:
                  return # Both T=0 and N=0, okay to have no commitment arm
 
-        # print(f"开始承诺阶段 (N={self.N}, 臂={self.commitment_arm_selected})...") # Reduced print noise
         for _ in range(self.N):
             self.total_rounds_elapsed += 1
             # 拉动承诺的臂并获得奖励
             reward = self.bandit.pull(self.commitment_arm_selected)
             self.commitment_rewards_received.append(reward)
-        # print("承诺阶段完成。") # Reduced print noise
 
     def calculate_regret(self):
         """
@@ -169,11 +148,11 @@ class BanditExperiment:
 
     # --- Helper methods to access state ---
     def get_arm_values(self):
-        r"""获取每个臂当前的估计平均奖励 $\hat{\mu}_i$"""
+        """获取每个臂当前的估计平均奖励"""
         return self.arm_estimated_values
 
     def get_arm_counts(self):
-        """获取每个臂到目前为止被拉动的次数 $n_i$"""
+        """获取每个臂到目前为止被拉动的次数"""
         return self.arm_pull_counts
 
     def get_total_rewards(self):
