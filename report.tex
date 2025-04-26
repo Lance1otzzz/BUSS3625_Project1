@@ -1,4 +1,4 @@
-\documentclass[8pt, a4paper]{ctexart} % 使用 ctexart 文档类以支持中文, 11pt 字号, A4纸张
+\documentclass[6pt, a4paper]{ctexart} % 使用 ctexart 文档类以支持中文, 11pt 字号, A4纸张
 
 \usepackage{amsmath} % 数学公式
 \usepackage{amssymb} % 数学符号
@@ -10,7 +10,7 @@
 \usepackage{subcaption} % 在导言区添加
 
 % 设置页边距，有助于控制页数
-\geometry{left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
+\geometry{left=1.5cm, right=1.5cm, top=1.5cm, bottom=1.2cm}
 
 % 定义一些常用命令 (可选)
 \newcommand{\N}{\ensuremath{N}}
@@ -29,43 +29,62 @@
 \date{\today} 
 
 \begin{document}
-
 \maketitle
 
-\section{算法策略}
-\subsubsection{固定探索策略}
+\section{算法策略分析}
+不难发现算法可以是一个固定探索策略和一个承诺阶段策略的组合。一个比较朴素的想法是：探索阶段找若干个策略，承诺阶段找若干个策略，然后任意组合。在这份作业中，我们将使用这些策略作为baseline。
+
+\subsection{固定探索策略}
 \begin{itemize}
     \item \textbf{$\eps$-贪婪(Epsilon-Greedy)}: 以 $\eps$ 概率随机探索， $1-\eps$ 概率选择当前最优臂。
     \item \textbf{UCB(Upper Confidence Bound)}: 选择上置信界最高的臂，平衡探索与利用。
     \item \textbf{Thompson采样(Thompson Sampling)}: 基于Beta分布后验采样。
-    \item \textbf{Softmax}: 按指数加权概率选择臂，温度参数控制探索强度。
 \end{itemize}
+
 \subsection{承诺阶段策略}
 \begin{itemize}
     \item \textbf{最佳经验值(BestEmpirical)}: 选择估计平均奖励最高的臂。
     \item \textbf{最常拉动(MostPulled)}: 选择被拉动次数最多的臂。
     \item \textbf{置信下界(LCB)}: 选择置信下界最高的臂，更保守的选择方法。
 \end{itemize}
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/comparison_regret_over_time_T100_N500_k20.png}
+        \caption{长时间承诺}
+        \label{fig:image1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/comparison_regret_over_time_T5000_N1000_k10.png}
+        \caption{长时间探索}
+        \label{fig:image2}
+    \end{subfigure}
+    \caption{不同时间长度的对比}
+    \label{fig:time_comparison}
+\end{figure}
 \subsection{更新算法动机}
 想法是很简单的：在利用阶段，我们非常希望利用最“好”的臂，因为选错的代价非常高昂，足足为$\mathcal{O}(N)$。反观探索阶段，我们的算法都是次线性的，因此我们希望探索阶段稍稍做一点让步。
+但是如果探索阶段本身过长了，我们就会浪费掉很多时间去探索那些“次优”的臂。所以我们面对的是这样一个需求：探索阶段要充分探索，保证承诺阶段的结果够好；但也要保证探索阶段不能太长，不要浪费太多的付出。
 
 \begin{figure}[htbp]
     \centering
     \begin{subfigure}[b]{0.48\textwidth}
         \includegraphics[width=\textwidth]{fig/single_run_regret_regular_UCB.png}
         \caption{直接粗暴组合策略}
-        \label{fig:image1}
+        \label{fig:image3}
     \end{subfigure}
     \hfill
     \begin{subfigure}[b]{0.48\textwidth}
         \includegraphics[width=\textwidth]{fig/single_run_regret_dynamic_Hoeffding.png}
         \caption{尝试动态探索}
-        \label{fig:image2}
+        \label{fig:image4}
     \end{subfigure}
-    \caption{幻想中的情况}
+    \caption{幻想中的优化}
     \label{fig:both_images}
 \end{figure}
-\subsection{实验阶段策略}
+
+\section{改进策略理论分析}
 
 这些策略的核心思想是在探索阶段\textbf{动态地决定何时停止探索}并进入承诺阶段，而不是预先固定探索轮数 $T$。它们都试图在有足够统计信心确定最佳臂时停止探索，并将置信度要求与承诺阶段的长度 $N$ 联系起来，因为 $N$ 越大，选错臂的累积损失（后悔值）可能越高。
 
@@ -74,13 +93,12 @@
 \paragraph{核心思想：} 利用频率派的 Hoeffding 不等式为每个臂的平均奖励 $\mu_a$ 估计一个置信区间 $[\text{LCB}_a, \text{UCB}_a]$。Hoeffding 不等式提供了一个概率上界，保证真实均值落在基于样本均值 $\hat{\mu}_a$ 构建的置信区间内的概率至少为 $1-\delta$。
 
 \paragraph{Hoeffding 不等式与置信区间推导：}
-Hoeffding 不等式为独立的有界随机变量之和与其期望值的偏差提供了一个上界。对于独立随机变量 $X_1, \dots, X_n$，且 $0 \le X_i \le 1$，令 $\bar{X} = \frac{1}{n}\sum_{i=1}^n X_i$ 为样本均值，$\mu = E[\bar{X}]$ 为真实均值。Hoeffding 不等式表明：
+Hoeffding 不等式表明：
 $$P(|\bar{X} - \mu| \ge \epsilon) \le 2e^{-2n\epsilon^2}$$
 这表示样本均值 $\bar{X}$ 与真实均值 $\mu$ 的偏差超过 $\epsilon$ 的概率最多为 $2e^{-2n\epsilon^2}$。
 
 为了构建置信区间，我们希望找到一个 $\epsilon$，使得误差大于 $\epsilon$ 的概率至多为某个小值 $\delta$。令概率上界等于 $\delta$：
-$$2e^{-2n\epsilon^2} = \delta$$
-解出 $\epsilon= \sqrt{\frac{\ln(2/\delta)}{2n}}$
+$$2e^{-2n\epsilon^2} = \delta\Rightarrow \displaystyle\epsilon= \sqrt{\frac{\ln(2/\delta)}{2n}}$$
 
 这个 $\epsilon$ 就是置信区间的半径。真实均值 $\mu$ 落在区间 $[\bar{X} - \epsilon, \bar{X} + \epsilon]$ 内的概率至少为 $1-\delta$。
 
@@ -94,7 +112,7 @@ $$\epsilon_a(t, \delta) = \sqrt{\frac{\ln(2k/\delta)}{2n_a(t)}}$$
     \item \textbf{停止条件：} 如果找到一个臂 $a^*$，使得其置信下界 LCB$_{a^*}$ 严格大于所有其他臂 $a \neq a^*$ 的置信上界 UCB$_a$，则停止探索。即：
     $$\hat{\mu}_{a^*}(t) - \epsilon_{a^*}(t, \delta) > \max_{a \neq a^*} \{ \hat{\mu}_a(t) + \epsilon_a(t, \delta) \}$$
     这保证了臂 $a^*$ 在统计上优于所有其他臂，置信度至少为 $1-\delta$。
-    \item \textbf{探索策略（未停止时）：} 当停止条件未满足时，选择当前 UCB 值最高的臂进行探索：$\arg\max_a \{\hat{\mu}_a(t) + \epsilon_a(t, \delta)\}$ [cite: Project1/strategies.py]。这旨在优先探索那些潜在最优或不确定性高的臂。
+    \item \textbf{探索策略（未停止时）：} 当停止条件未满足时，选择当前 UCB 值最高的臂进行探索：$\arg\max_a \{\hat{\mu}_a(t) + \epsilon_a(t, \delta)\}$。这旨在优先探索那些潜在最优或不确定性高的臂。
     \item \textbf{参数 $\delta$：} 将 $\delta$ 设置为与 $N$ 相关，例如 $\delta = \frac{1}{N \cdot \text{factor}}$ [cite: Project1/strategies.py]，将置信水平与承诺阶段的长度联系起来。更大的 $N$ 需要更高的置信度（更小的 $\delta$）。
     \item \textbf{理论保证：} 当 $\delta=1/N$ 时，错误识别最优臂的概率 $P(\text{选择次优臂}) \le 1/N$。达到停止条件所需的期望探索轮数大致为 $\Omega(\sum_{a \neq a^*} \frac{\log(kN/\delta)}{\Delta_a^2})$，其中 $\Delta_a = \mu_{a^*} - \mu_a$ 是最优臂与次优臂的真实均值差距。
 \end{itemize}
@@ -105,83 +123,27 @@ $$\epsilon_a(t, \delta) = \sqrt{\frac{\ln(2k/\delta)}{2n_a(t)}}$$
 
 \paragraph{实现细节：}
 \begin{itemize}
-    \item \textbf{后验分布：} 假设奖励服从伯努利分布（取值为 0 或 1），并使用 Beta 分布 Beta$(\alpha_a, \beta_a)$ 作为 $\mu_a$ 的共轭先验/后验分布。若使用无信息先验 Beta(1, 1)，在 $n_a(t)$ 次拉动后获得的总奖励为 $R_a(t)$，则后验分布为 Beta$(\alpha_a', \beta_a')$，其中 $\alpha_a' = 1 + R_a(t)$ 且 $\beta_a' = 1 + (n_a(t) - R_a(t))$ [cite: Project1/strategies.py]。
-    \item \textbf{估计最优臂后验概率：} 计算臂 $a^*$ 是最优臂的后验概率 $P(a^* = \arg\max_a \mu_a \mid \text{data})$ 通常通过蒙特卡洛采样完成。从每个臂当前的 Beta 后验分布中抽取大量样本 $(\theta_1^{(s)}, \dots, \theta_k^{(s)})$ （$s=1, \dots, S$, $S$ 为 \texttt{num\_samples}）。对每组样本 $s$，找到值最大的样本对应的臂索引 $a^{(s)} = \arg\max_a \theta_a^{(s)}$。统计每个臂 $j$ 成为最优臂的次数，除以总样本数 $S$，得到后验概率的估计值 $\hat{P}(a^*=j \mid \text{data}) \approx \frac{1}{S} \sum_{s=1}^S \mathbb{I}(a^{(s)} = j)$ [cite: Project1/strategies.py]。
-    \item \textbf{停止条件：} 当某个臂 $a^*$ 的后验概率估计值 $\hat{P}(a^* = \arg\max \mu_a \mid \text{data})$ 超过预设阈值 $\tau$ 时，停止探索。该阈值通常也与 $N$ 相关，例如 $\tau = 1 - \frac{1}{N \cdot \text{factor}}$ [cite: Project1/strategies.py]。
-    \item \textbf{探索策略（未停止时）：} 使用汤普森采样（Thompson Sampling）。在每一步，从每个臂 $a$ 的当前后验分布 Beta$(\alpha_a', \beta_a')$ 中抽取一个样本 $\theta_a$，然后拉动样本值 $\theta_a$ 最大的那个臂：$\arg\max_a \theta_a$ [cite: Project1/strategies.py]。这自然地平衡了探索（后验分布宽的臂有更大机会被采样到高值）和利用（后验均值高的臂更可能被采样到高值）。
-    \item \textbf{理论保证：} 当停止阈值为 $1-1/N$ 时，错误率随 $N$ 增大而减小。期望后悔值通常有常数上界（不依赖于 $T+N$）。探索轮数理论上也大致与 $\log(N)/\Delta^2$ 成正比。在臂间差距明显（$\Delta$ 较大）的“简单”问题上，贝叶斯方法通常能更快停止。
+    \item 使用蒙特卡洛方法评估每个臂是最优臂的后验概率。
+    \item 当某臂的后验概率超过阈值($1-1/\N$)时停止探索。
 \end{itemize}
-
-
-
-我们实现了以下探索-利用策略：
-
-
-\subsubsection{动态探索策略}
-\begin{itemize}
-    \item \textbf{基于Hoeffding不等式的动态探索}:
-        \begin{itemize}
-            \item 根据后续承诺阶段长度 $\N$ 自适应调整置信水平($\deltaVal = 1/\N$)。
-            \item 当某臂的置信下界高于所有其他臂的置信上界时停止探索。
-        \end{itemize}
-    \item \textbf{基于贝叶斯后验的动态探索}:
-        \begin{itemize}
-            \item 使用蒙特卡洛方法评估每个臂是最优臂的后验概率。
-            \item 当某臂的后验概率超过阈值($1-1/\N$)时停止探索。
-        \end{itemize}
-\end{itemize}
-
-
-
-\section{理论分析}
-
-\subsection{$\T/\N$比率的理论意义}
-
-在总预算 $B=\T+\N$ 固定的情况下，如何分配探索轮数 $\T$ 和利用轮数 $\N$ 是一个关键问题。理论上：
-\begin{itemize}
-    \item 当 $B \to \infty$ 时，最优探索轮数应该是 $O(\log B)$，使得 $\T/B \to 0$。
-    \item 当 $B$ 较小时，存在一个取决于问题难度的最优 $\T/\N$ 比率。
-\end{itemize}
-
-对于差距为 $\DeltaVal$ 的情况(最优臂与次优臂均值差)，UCB策略的理论最优 $\T$ 约为：
-$$
-\T_{opt} \approx \frac{c \cdot \log \N}{\DeltaVal^2}
-$$
-其中 $c$ 是一个常数。这表明随着 $\N$ 的增加，最优 $\T$ 应该对数级增长，而随着问题难度($\DeltaVal$ 减小)的增加，最优 $\T$ 应该二次级增长。
-
-\subsection{动态探索策略分析}
-
-\subsubsection{基于Hoeffding的动态策略}
-当使用 $\deltaVal = 1/\N$ 时，该策略确保：
-\begin{itemize}
-    \item 错误识别概率 $P(\text{选择次优臂}) \leq 1/\N$。
-    \item 期望后悔值 $E[R] \leq \DeltaVal \cdot \N \cdot (1/\N) + \T \cdot \DeltaVal = \DeltaVal(1+\T)$。
-    \item 要满足终止条件，需要至少 $\Omega(\log(\kArms\N)/\DeltaVal^2)$ 次拉动。
-\end{itemize}
-
-\subsubsection{贝叶斯策略分析}
-当停止阈值为 $1-1/\N$ 时：
-\begin{itemize}
-    \item 错误率随 $\N$ 增大而减小，确保后悔值期望上界为常数。
-    \item 探索轮数理论上与 $\log(\N)/\DeltaVal^2$ 成正比。
-    \item 在简单问题(臂间差距明显)上通常能更快停止探索。
-\end{itemize}
-
+三页纸写不下了，略。
 \section{实验结果与分析}
-
-\subsection{单次实验示例}
-
-
-\subsection{$\T/\N$关系分析}
-
-
-\subsection{动态探索策略评估}
-
-
-\subsection{$\N$值对探索轮数的影响}
-
-% --------------------------------------------
-
-\section{讨论}
-
+\subsection{regret测试}
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/single_run_Hoeffding_δ_1_0_N___T_1000__BestEmpirical.png}
+        \caption{基于Hoeffding的算法}
+        \label{fig:image5}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/comparison_final_regret_T100_N500_k20.png}
+        \caption{最终regret比较}
+        \label{fig:image6}
+    \end{subfigure}
+    \caption{算法结果比较}
+    \label{fig:both_images2}
+\end{figure}
+\subsection{}
 \end{document}
