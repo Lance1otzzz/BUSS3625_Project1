@@ -7,6 +7,7 @@
 \usepackage{float} % 控制浮动体位置 (如图表)
 \usepackage{lipsum} % 用于生成占位文本 (如果需要)
 \usepackage{hyperref} % 创建超链接 (可选)
+\usepackage{subcaption} % 在导言区添加
 
 % 设置页边距，有助于控制页数
 \geometry{left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
@@ -23,20 +24,15 @@
 \newcommand{\deltaVal}{\ensuremath{\delta}}
 \newcommand{\DeltaVal}{\ensuremath{\Delta}}
 
-\title{多臂赌博机两阶段框架下的策略研究}
+\title{多臂赌博机两阶段框架下的策略分析}
 \author{江木力}
-\date{\today} % 使用当前日期
+\date{\today} 
 
 \begin{document}
 
 \maketitle
 
 \section{算法策略}
-
-\subsection{实验阶段策略}
-
-我们实现了以下探索-利用策略：
-
 \subsubsection{固定探索策略}
 \begin{itemize}
     \item \textbf{$\eps$-贪婪(Epsilon-Greedy)}: 以 $\eps$ 概率随机探索， $1-\eps$ 概率选择当前最优臂。
@@ -44,6 +40,82 @@
     \item \textbf{Thompson采样(Thompson Sampling)}: 基于Beta分布后验采样。
     \item \textbf{Softmax}: 按指数加权概率选择臂，温度参数控制探索强度。
 \end{itemize}
+\subsection{承诺阶段策略}
+\begin{itemize}
+    \item \textbf{最佳经验值(BestEmpirical)}: 选择估计平均奖励最高的臂。
+    \item \textbf{最常拉动(MostPulled)}: 选择被拉动次数最多的臂。
+    \item \textbf{置信下界(LCB)}: 选择置信下界最高的臂，更保守的选择方法。
+\end{itemize}
+\subsection{更新算法动机}
+想法是很简单的：在利用阶段，我们非常希望利用最“好”的臂，因为选错的代价非常高昂，足足为$\mathcal{O}(N)$。反观探索阶段，我们的算法都是次线性的，因此我们希望探索阶段稍稍做一点让步。
+
+\begin{figure}[htbp]
+    \centering
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/single_run_regret_regular_UCB.png}
+        \caption{直接粗暴组合策略}
+        \label{fig:image1}
+    \end{subfigure}
+    \hfill
+    \begin{subfigure}[b]{0.48\textwidth}
+        \includegraphics[width=\textwidth]{fig/single_run_regret_dynamic_Hoeffding.png}
+        \caption{尝试动态探索}
+        \label{fig:image2}
+    \end{subfigure}
+    \caption{幻想中的情况}
+    \label{fig:both_images}
+\end{figure}
+\subsection{实验阶段策略}
+
+这些策略的核心思想是在探索阶段\textbf{动态地决定何时停止探索}并进入承诺阶段，而不是预先固定探索轮数 $T$。它们都试图在有足够统计信心确定最佳臂时停止探索，并将置信度要求与承诺阶段的长度 $N$ 联系起来，因为 $N$ 越大，选错臂的累积损失（后悔值）可能越高。
+
+\subsection{方法1：基于 Hoeffding 不等式的动态探索 (\texttt{HoeffdingBasedExploration})}
+
+\paragraph{核心思想：} 利用频率派的 Hoeffding 不等式为每个臂的平均奖励 $\mu_a$ 估计一个置信区间 $[\text{LCB}_a, \text{UCB}_a]$。Hoeffding 不等式提供了一个概率上界，保证真实均值落在基于样本均值 $\hat{\mu}_a$ 构建的置信区间内的概率至少为 $1-\delta$。
+
+\paragraph{Hoeffding 不等式与置信区间推导：}
+Hoeffding 不等式为独立的有界随机变量之和与其期望值的偏差提供了一个上界。对于独立随机变量 $X_1, \dots, X_n$，且 $0 \le X_i \le 1$，令 $\bar{X} = \frac{1}{n}\sum_{i=1}^n X_i$ 为样本均值，$\mu = E[\bar{X}]$ 为真实均值。Hoeffding 不等式表明：
+$$P(|\bar{X} - \mu| \ge \epsilon) \le 2e^{-2n\epsilon^2}$$
+这表示样本均值 $\bar{X}$ 与真实均值 $\mu$ 的偏差超过 $\epsilon$ 的概率最多为 $2e^{-2n\epsilon^2}$。
+
+为了构建置信区间，我们希望找到一个 $\epsilon$，使得误差大于 $\epsilon$ 的概率至多为某个小值 $\delta$。令概率上界等于 $\delta$：
+$$2e^{-2n\epsilon^2} = \delta$$
+解出 $\epsilon= \sqrt{\frac{\ln(2/\delta)}{2n}}$
+
+这个 $\epsilon$ 就是置信区间的半径。真实均值 $\mu$ 落在区间 $[\bar{X} - \epsilon, \bar{X} + \epsilon]$ 内的概率至少为 $1-\delta$。
+
+\paragraph{应用于 K 个臂 (联合界)：}
+当同时处理 $k$ 个臂时，我们希望置信保证对所有臂都成立。常用的方法是联合界（Union Bound）。如果我们希望 $k$ 个置信区间中\emph{任何一个}未能包含其真实均值的总概率最多为 $\delta$，我们可以要求每个单独区间的失败概率最多为 $\delta/k$。将 $\epsilon$ 公式中的 $\delta$ 替换为 $\delta/k$ 得到：
+$$\epsilon_a(t, \delta) = \sqrt{\frac{\ln(2k/\delta)}{2n_a(t)}}$$
+其中 $n_a(t)$ 是臂 $a$ 在时间 $t$ 之前被拉动的次数。
+\paragraph{实现细节：}
+\begin{itemize}
+    \item \textbf{置信区间：} 对于被拉动 $n_a(t)$ 次、样本均值为 $\hat{\mu}_a(t)$ 的臂 $a$，其置信区间为 $[\text{LCB}_a, \text{UCB}_a]$，其中 LCB$_a = \hat{\mu}_a(t) - \epsilon_a(t, \delta)$ 且 UCB$_a = \hat{\mu}_a(t) + \epsilon_a(t, \delta)$。
+    \item \textbf{停止条件：} 如果找到一个臂 $a^*$，使得其置信下界 LCB$_{a^*}$ 严格大于所有其他臂 $a \neq a^*$ 的置信上界 UCB$_a$，则停止探索。即：
+    $$\hat{\mu}_{a^*}(t) - \epsilon_{a^*}(t, \delta) > \max_{a \neq a^*} \{ \hat{\mu}_a(t) + \epsilon_a(t, \delta) \}$$
+    这保证了臂 $a^*$ 在统计上优于所有其他臂，置信度至少为 $1-\delta$。
+    \item \textbf{探索策略（未停止时）：} 当停止条件未满足时，选择当前 UCB 值最高的臂进行探索：$\arg\max_a \{\hat{\mu}_a(t) + \epsilon_a(t, \delta)\}$ [cite: Project1/strategies.py]。这旨在优先探索那些潜在最优或不确定性高的臂。
+    \item \textbf{参数 $\delta$：} 将 $\delta$ 设置为与 $N$ 相关，例如 $\delta = \frac{1}{N \cdot \text{factor}}$ [cite: Project1/strategies.py]，将置信水平与承诺阶段的长度联系起来。更大的 $N$ 需要更高的置信度（更小的 $\delta$）。
+    \item \textbf{理论保证：} 当 $\delta=1/N$ 时，错误识别最优臂的概率 $P(\text{选择次优臂}) \le 1/N$。达到停止条件所需的期望探索轮数大致为 $\Omega(\sum_{a \neq a^*} \frac{\log(kN/\delta)}{\Delta_a^2})$，其中 $\Delta_a = \mu_{a^*} - \mu_a$ 是最优臂与次优臂的真实均值差距。
+\end{itemize}
+
+\subsection{方法2：基于贝叶斯后验概率的动态探索 (\texttt{BayesianExploration})}
+
+\paragraph{核心思想：} 采用贝叶斯方法，为每个臂的平均奖励 $\mu_a$ 维护一个后验概率分布。当某个臂是最优臂的后验概率超过一个阈值时，停止探索。
+
+\paragraph{实现细节：}
+\begin{itemize}
+    \item \textbf{后验分布：} 假设奖励服从伯努利分布（取值为 0 或 1），并使用 Beta 分布 Beta$(\alpha_a, \beta_a)$ 作为 $\mu_a$ 的共轭先验/后验分布。若使用无信息先验 Beta(1, 1)，在 $n_a(t)$ 次拉动后获得的总奖励为 $R_a(t)$，则后验分布为 Beta$(\alpha_a', \beta_a')$，其中 $\alpha_a' = 1 + R_a(t)$ 且 $\beta_a' = 1 + (n_a(t) - R_a(t))$ [cite: Project1/strategies.py]。
+    \item \textbf{估计最优臂后验概率：} 计算臂 $a^*$ 是最优臂的后验概率 $P(a^* = \arg\max_a \mu_a \mid \text{data})$ 通常通过蒙特卡洛采样完成。从每个臂当前的 Beta 后验分布中抽取大量样本 $(\theta_1^{(s)}, \dots, \theta_k^{(s)})$ （$s=1, \dots, S$, $S$ 为 \texttt{num\_samples}）。对每组样本 $s$，找到值最大的样本对应的臂索引 $a^{(s)} = \arg\max_a \theta_a^{(s)}$。统计每个臂 $j$ 成为最优臂的次数，除以总样本数 $S$，得到后验概率的估计值 $\hat{P}(a^*=j \mid \text{data}) \approx \frac{1}{S} \sum_{s=1}^S \mathbb{I}(a^{(s)} = j)$ [cite: Project1/strategies.py]。
+    \item \textbf{停止条件：} 当某个臂 $a^*$ 的后验概率估计值 $\hat{P}(a^* = \arg\max \mu_a \mid \text{data})$ 超过预设阈值 $\tau$ 时，停止探索。该阈值通常也与 $N$ 相关，例如 $\tau = 1 - \frac{1}{N \cdot \text{factor}}$ [cite: Project1/strategies.py]。
+    \item \textbf{探索策略（未停止时）：} 使用汤普森采样（Thompson Sampling）。在每一步，从每个臂 $a$ 的当前后验分布 Beta$(\alpha_a', \beta_a')$ 中抽取一个样本 $\theta_a$，然后拉动样本值 $\theta_a$ 最大的那个臂：$\arg\max_a \theta_a$ [cite: Project1/strategies.py]。这自然地平衡了探索（后验分布宽的臂有更大机会被采样到高值）和利用（后验均值高的臂更可能被采样到高值）。
+    \item \textbf{理论保证：} 当停止阈值为 $1-1/N$ 时，错误率随 $N$ 增大而减小。期望后悔值通常有常数上界（不依赖于 $T+N$）。探索轮数理论上也大致与 $\log(N)/\Delta^2$ 成正比。在臂间差距明显（$\Delta$ 较大）的“简单”问题上，贝叶斯方法通常能更快停止。
+\end{itemize}
+
+
+
+我们实现了以下探索-利用策略：
+
 
 \subsubsection{动态探索策略}
 \begin{itemize}
@@ -59,12 +131,7 @@
         \end{itemize}
 \end{itemize}
 
-\subsection{承诺阶段策略}
-\begin{itemize}
-    \item \textbf{最佳经验值(BestEmpirical)}: 选择估计平均奖励最高的臂。
-    \item \textbf{最常拉动(MostPulled)}: 选择被拉动次数最多的臂。
-    \item \textbf{置信下界(LCB)}: 选择置信下界最高的臂，更保守的选择方法。
-\end{itemize}
+
 
 \section{理论分析}
 
@@ -116,34 +183,5 @@ $$
 % --------------------------------------------
 
 \section{讨论}
-
-\subsection{主要发现}
-\begin{enumerate}
-    \item \textbf{最优$\T/\N$比率}: 实验表明，对于固定预算 $B=\T+\N$，存在最优的资源分配比例。这一比例与问题难度和所选策略密切相关。
-    \item \textbf{动态策略优势}: 动态探索策略能够根据统计证据自适应决定何时停止探索，在很多情况下优于预设固定$\T$值的策略，特别是当$\N$值变化大时。
-    \item \textbf{策略组合性能}: 实验表明Thompson采样与BestEmpirical的组合在多数场景下表现最佳，而简单的$\eps$-贪婪策略在参数选择得当时也能取得不错的效果。
-\end{enumerate}
-
-\subsection{实际应用指导}
-基于我们的研究，可以提出以下实际应用指导：
-\begin{enumerate}
-    \item \textbf{当$\N$值已知且较大时}: 应采用动态探索策略，特别是基于贝叶斯后验的方法，可以在保证选择质量的同时减少不必要的探索。
-    \item \textbf{当问题难度未知时}: UCB策略是稳健的选择，它能在各种难度条件下都取得不错的表现。
-    \item \textbf{当计算资源受限时}: 使用$\eps$-贪婪策略，设定$\T/\N$比率约为0.5左右，是简单而有效的做法。
-\end{enumerate}
-
-\section{结论与未来工作}
-
-\subsection{结论}
-
-本研究系统分析了多臂赌博机两阶段框架中的决策策略，重点关注了$\T/\N$比率对总后悔值的影响。我们提出的动态探索策略能够根据承诺阶段长度$\N$自适应确定所需的探索量，在多种场景下表现优异。实验结果验证了我们的理论分析：最优探索轮数与$\log(\N)$成正比，与问题难度的倒数平方($1/\DeltaVal^2$)成正比。
-
-\subsection{未来工作}
-\begin{enumerate}
-    \item \textbf{非平稳环境扩展}: 将研究扩展到奖励分布随时间变化的非平稳环境。
-    \item \textbf{多臂相关性研究}: 考虑臂之间存在相关性的情况，例如线性上下文赌博机模型。
-    \item \textbf{实际应用验证}: 在实际业务场景如临床试验或广告投放中验证本研究的发现。
-    \item \textbf{理论边界改进}: 提供动态策略在不同问题特征下的更精确后悔值上界。
-\end{enumerate}
 
 \end{document}

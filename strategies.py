@@ -224,10 +224,11 @@ class DynamicExplorationStrategies:
             # 检查是否达到最大探索轮数
             self.total_pulls = sum(arm_counts)
             if self.max_explore is not None and self.total_pulls >= self.max_explore:
-                best_arm = np.argmax(arm_values)
+                # 达到最大轮数，停止探索，但不在此处决定承诺臂
                 self.stopped = True
-                self.committed_arm = best_arm
-                return best_arm
+                self.committed_arm = None # 让外部逻辑根据收集的数据决定
+                # 返回当前最佳臂作为本轮选择，但不作为最终承诺
+                return np.argmax(arm_values)
                 
             # 计算每个臂的置信区间
             lcb = np.zeros(k)
@@ -299,18 +300,19 @@ class DynamicExplorationStrategies:
             # 检查是否达到最大探索轮数
             self.total_pulls = sum(arm_counts)
             if self.max_explore is not None and self.total_pulls >= self.max_explore:
-                # 达到最大探索轮数，使用后验均值选择最佳臂
+                # 达到最大轮数，停止探索，但不在此处决定承诺臂
+                self.stopped = True
+                self.committed_arm = None # 让外部逻辑根据收集的数据决定
+                # 返回基于当前后验均值的最佳臂作为本轮选择，但不作为最终承诺
                 posterior_means = np.zeros(k)
                 for i in range(k):
                     if arm_counts[i] > 0:
                         alpha = arm_rewards[i] + 1
                         beta = arm_counts[i] - arm_rewards[i] + 1
                         posterior_means[i] = alpha / (alpha + beta)
-                    
-                best_arm = np.argmax(posterior_means)
-                self.stopped = True
-                self.committed_arm = best_arm
-                return best_arm
+                    else:
+                        posterior_means[i] = 0.5 # 如果从未拉动，假设先验均值
+                return np.argmax(posterior_means)
             
             # 只有当每个臂都被拉动过，才计算后验概率
             if np.all(arm_counts > 0):

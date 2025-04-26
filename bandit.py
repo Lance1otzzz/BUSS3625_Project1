@@ -31,9 +31,10 @@ class KArmedBandit:
 
         # 初始化内部状态变量
         self.true_means = None
+        self.beta_params = None # 用于存储 Beta 分布的 alpha, beta 参数
         self.optimal_arm = None
         self.optimal_mean = None
-        # 在 reset 方法中实际生成均值
+        # 在 reset 方法中实际生成均值和参数
         self.reset()
 
     def _validate_reward_type(self):
@@ -47,16 +48,23 @@ class KArmedBandit:
 
     def reset(self):
         """
-        重置赌博机：重新随机生成每个臂的真实奖励均值 $\mu_i$。
+        重置赌博机：根据 reward_type 重新随机生成每个臂的真实参数。
+        对于 'beta' 类型，生成 alpha 和 beta 参数；否则生成均值。
         """
-        # 从均匀分布中抽取每个臂的真实奖励均值
-        self.true_means = np.random.uniform(self.mean_range[0], self.mean_range[1], self.k)
-
-        # 对于 Beta 分布，确保均值在 (0, 1) 范围内以计算 alpha, beta
         if self.reward_type == 'beta':
-             self.true_means = np.clip(self.true_means, 1e-6, 1 - 1e-6) # 避免严格的 0 或 1
+            # 为每个臂随机生成 Beta 分布的 alpha 和 beta 参数
+            # 例如，从 Uniform(1, 5) 中采样，以确保参数为正且分布不会过于集中
+            alpha_params = np.random.uniform(1, 5, self.k)
+            beta_params = np.random.uniform(1, 5, self.k)
+            self.beta_params = np.stack([alpha_params, beta_params], axis=1) # 存储为 (k, 2) 数组
+            # 计算对应的真实均值 (用于比较和后悔值计算)
+            self.true_means = alpha_params / (alpha_params + beta_params)
+        else:
+            # 对于其他分布，像以前一样生成真实均值
+            self.true_means = np.random.uniform(self.mean_range[0], self.mean_range[1], self.k)
+            self.beta_params = None # Beta 参数不适用
 
-        # 记录最优臂的索引和真实奖励均值
+        # 记录最优臂的索引和真实奖励均值 (基于计算出的或生成的均值)
         self.optimal_arm = np.argmax(self.true_means)
         self.optimal_mean = self.true_means[self.optimal_arm]
 
@@ -85,11 +93,11 @@ class KArmedBandit:
                  mean = np.clip(mean, 0, 1)
             return np.random.binomial(1, mean)
         elif self.reward_type == 'beta':
-             # 从 Beta 分布生成奖励
-             concentration = 1.0 / (self.reward_std_dev**2) if self.reward_std_dev > 0 else 10
-             alpha = max(1e-6, mean * concentration)
-             beta = max(1e-6, (1 - mean) * concentration)
-             return np.random.beta(alpha, beta)
+            # 使用在 reset() 中为该臂生成的 alpha 和 beta 参数
+            if self.beta_params is None:
+                 raise RuntimeError("内部错误: reward_type 为 'beta' 但 beta_params 未在 reset() 中设置。")
+            alpha, beta = self.beta_params[arm]
+            return np.random.beta(alpha, beta)
         else:
              raise RuntimeError(f"内部错误: 未处理的奖励类型 {self.reward_type}")
 
